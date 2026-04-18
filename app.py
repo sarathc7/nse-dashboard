@@ -4,6 +4,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
 from pathlib import Path
+import json
+import os
 import pytz
 import requests
 
@@ -382,12 +384,43 @@ div[data-testid="stMetricValue"]{color:#f0f0f0 !important;}
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════
+# PERSISTENT STORAGE  (survives page refresh)
+# ══════════════════════════════════════════════════════════════
+_DATA_FILE = _APP_DIR / "user_data.json"
+
+def _load_data():
+    try:
+        if _DATA_FILE.exists():
+            d = json.loads(_DATA_FILE.read_text(encoding="utf-8"))
+            return (d.get("portfolio", []),
+                    d.get("mf_portfolio", []),
+                    d.get("watchlist", []))
+    except Exception:
+        pass
+    return [], [], []
+
+def _save_data():
+    try:
+        _DATA_FILE.write_text(
+            json.dumps({
+                "portfolio":    st.session_state.portfolio,
+                "mf_portfolio": st.session_state.mf_portfolio,
+                "watchlist":    st.session_state.watchlist,
+            }, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        st.toast(f"⚠️ Save failed: {e}", icon="⚠️")
+
+# ══════════════════════════════════════════════════════════════
 # SESSION STATE
 # ══════════════════════════════════════════════════════════════
+_saved_portfolio, _saved_mf, _saved_watchlist = _load_data()
+
 defaults = {
-    "portfolio": [],
-    "mf_portfolio": [],
-    "watchlist": [],
+    "portfolio": _saved_portfolio,
+    "mf_portfolio": _saved_mf,
+    "watchlist": _saved_watchlist,
     "tab_idx": 0,
     "home_search": "",
     "mf_cat_filter": "Large Cap",
@@ -1149,6 +1182,7 @@ elif tab == 1:
                     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
                 if st.button(f"Remove {r['Symbol']}", key=f"del_{i}", type="secondary"):
                     st.session_state.portfolio.pop(i)
+                    _save_data()
                     st.rerun()
 
     st.markdown('<div class="sec-hdr">Add Holding</div>', unsafe_allow_html=True)
@@ -1166,6 +1200,7 @@ elif tab == 1:
                     st.warning(f"{sym} already added.")
                 else:
                     st.session_state.portfolio.append({"symbol": sym, "qty": int(qty), "avg_price": float(avg)})
+                    _save_data()
                     st.success(f"✓ {sym} added\!")
                     st.rerun()
             else:
@@ -1246,6 +1281,7 @@ elif tab == 2:
                     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
                 if st.button("Remove fund", key=f"mf_del_{i}", type="secondary"):
                     st.session_state.mf_portfolio.pop(i)
+                    _save_data()
                     st.rerun()
 
     # Add fund form
@@ -1270,6 +1306,7 @@ elif tab == 2:
                         "units": float(units),
                         "buy_nav": float(buy_nav),
                     })
+                    _save_data()
                     st.success(f"✓ {data['name'][:40]} added")
                     st.rerun()
 
@@ -1348,6 +1385,7 @@ elif tab == 3:
                     st.warning(f"{wsym} already in watchlist")
                 else:
                     st.session_state.watchlist.append(wsym)
+                    _save_data()
                     st.success(f"✓ {wsym} added")
                     st.rerun()
             else:
@@ -1408,6 +1446,7 @@ elif tab == 3:
                     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
                 if st.button("Remove", key=f"w_del_{i}", type="secondary"):
                     st.session_state.watchlist.pop(i)
+                    _save_data()
                     st.rerun()
     else:
         st.markdown(
