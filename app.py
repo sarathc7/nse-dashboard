@@ -317,10 +317,11 @@ def portfolio_summary():
     return rows, invested, current, current - invested, ((current-invested)/invested*100) if invested else 0
 
 def sparkline_fig(data, up=True):
-    color = "#00d09c" if up else "#ff6b6b"
+    color      = "#00d09c" if up else "#ff6b6b"
+    fill_color = "rgba(0,208,156,0.13)" if up else "rgba(255,107,107,0.13)"
     fig = go.Figure(go.Scatter(y=data, mode="lines",
         line=dict(color=color, width=1.5),
-        fill="tozeroy", fillcolor=color+"22"))
+        fill="tozeroy", fillcolor=fill_color))
     fig.update_layout(margin=dict(t=0,b=0,l=0,r=0), height=40,
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         xaxis=dict(visible=False), yaxis=dict(visible=False))
@@ -571,11 +572,12 @@ elif st.session_state.active_tab == 1:
                     horizontal=True, key=f"prd_{i}")
                 hist = fetch_history(r["Symbol"]+".NS", period)
                 if not hist.empty:
-                    color = "#00d09c" if r["PnL"] >= 0 else "#ff6b6b"
+                    color      = "#00d09c" if r["PnL"] >= 0 else "#ff6b6b"
+                    fill_color = "rgba(0,208,156,0.13)" if r["PnL"] >= 0 else "rgba(255,107,107,0.13)"
                     fig = go.Figure(go.Scatter(
                         x=hist.index, y=hist["Close"], mode="lines",
                         line=dict(color=color, width=2),
-                        fill="tozeroy", fillcolor=color+"22"))
+                        fill="tozeroy", fillcolor=fill_color))
                     fig.update_layout(
                         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                         margin=dict(t=4,b=4,l=0,r=0), height=160,
@@ -723,7 +725,7 @@ elif st.session_state.active_tab == 2:
                     x=hist.index, open=hist["Open"], high=hist["High"],
                     low=hist["Low"], close=hist["Close"],
                     increasing_line_color="#00d09c", decreasing_line_color="#ff6b6b",
-                    increasing_fillcolor="#00d09c33", decreasing_fillcolor="#ff6b6b33"))
+                    increasing_fillcolor="rgba(0,208,156,0.2)", decreasing_fillcolor="rgba(255,107,107,0.2)"))
                 fig.update_layout(
                     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                     margin=dict(t=4,b=4,l=0,r=0), height=220,
