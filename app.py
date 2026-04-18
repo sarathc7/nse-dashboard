@@ -20,8 +20,10 @@ st.set_page_config(
 )
 
 # ── Mobile branding: override Streamlit's default name / icons / manifest ──
-# This rewrites the document head at runtime so Add-to-Home-Screen on iOS/Android
-# shows "Stocklens" with our custom logo instead of Streamlit's defaults.
+# Streamlit ships a manifest.json with name="Streamlit" and its own favicon.
+# We overwrite the document <head> so Add-to-Home-Screen shows Stocklens.
+# We use BOTH data URLs (self-contained, always work) AND static files
+# (at ./app/static/...) so browsers have robust sources.
 import base64 as _b64
 import streamlit.components.v1 as _components
 
@@ -35,77 +37,131 @@ def _stocklens_icon_b64():
 _ICON_B64 = _stocklens_icon_b64()
 if _ICON_B64:
     _components.html(
-        """
+        r"""
 <script>
 (function() {
   const doc = window.parent.document;
-  if (doc.getElementById('stocklens-branding')) return;
-  const marker = doc.createElement('meta');
-  marker.id = 'stocklens-branding';
-  doc.head.appendChild(marker);
+  if (doc.__stocklensApplied) return;
+  doc.__stocklensApplied = true;
 
-  const iconUrl = 'data:image/png;base64,__ICON_B64__';
+  const iconData = 'data:image/png;base64,__ICON_B64__';
+  const iconStatic192 = './app/static/icon-192.png';
+  const iconStatic256 = './app/static/icon-256.png';
+  const iconStatic512 = './app/static/icon-512.png';
+  const iconStaticTouch = './app/static/apple-touch-icon.png';
+  const manifestStatic = './app/static/manifest.json';
 
-  // 1. Force the browser tab title (some mobile browsers use the title for bookmarks)
-  doc.title = 'Stocklens';
+  function apply() {
+    // Title (browser tab + bookmark)
+    doc.title = 'Stocklens';
 
-  // 2. iOS "Add to Home Screen" uses apple-mobile-web-app-title for the icon label
-  const setMeta = (name, content) => {
-    let m = doc.querySelector(`meta[name="${name}"]`);
-    if (\!m) { m = doc.createElement('meta'); m.setAttribute('name', name); doc.head.appendChild(m); }
-    m.setAttribute('content', content);
-  };
-  setMeta('apple-mobile-web-app-title', 'Stocklens');
-  setMeta('apple-mobile-web-app-capable', 'yes');
-  setMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
-  setMeta('application-name', 'Stocklens');
-  setMeta('theme-color', '#00d09c');
+    // Meta tags for iOS / Android / Windows
+    const setMeta = (name, content) => {
+      let m = doc.querySelector('meta[name="' + name + '"]');
+      if (\!m) { m = doc.createElement('meta'); m.setAttribute('name', name); doc.head.appendChild(m); }
+      m.setAttribute('content', content);
+    };
+    setMeta('apple-mobile-web-app-title', 'Stocklens');
+    setMeta('apple-mobile-web-app-capable', 'yes');
+    setMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
+    setMeta('application-name', 'Stocklens');
+    setMeta('mobile-web-app-capable', 'yes');
+    setMeta('theme-color', '#00d09c');
+    setMeta('msapplication-TileColor', '#0d0d0d');
 
-  // 3. Replace favicon + apple-touch-icon with our custom PNG
-  doc.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"], link[rel="apple-touch-icon-precomposed"], link[rel="shortcut icon"]').forEach(el => el.remove());
-  ['icon', 'apple-touch-icon', 'apple-touch-icon-precomposed', 'shortcut icon'].forEach(rel => {
-    const link = doc.createElement('link');
-    link.setAttribute('rel', rel);
-    link.setAttribute('href', iconUrl);
-    link.setAttribute('type', 'image/png');
-    if (rel === 'apple-touch-icon' || rel === 'apple-touch-icon-precomposed') {
-      link.setAttribute('sizes', '180x180');
+    // Remove any Streamlit-injected icons / manifest (but leave ours alone)
+    doc.querySelectorAll(
+      'link[rel~="icon"], link[rel="apple-touch-icon"], link[rel="apple-touch-icon-precomposed"], '
+      + 'link[rel="shortcut icon"], link[rel="manifest"]'
+    ).forEach(el => { if (el.dataset.stocklens \!== '1') el.remove(); });
+
+    // Favicons + apple-touch-icons (static + data-url fallback)
+    const addLink = (rel, href, type, sizes) => {
+      const link = doc.createElement('link');
+      link.setAttribute('rel', rel);
+      link.setAttribute('href', href);
+      if (type) link.setAttribute('type', type);
+      if (sizes) link.setAttribute('sizes', sizes);
+      link.dataset.stocklens = '1';
+      doc.head.appendChild(link);
+    };
+
+    if (\!doc.querySelector('link[data-stocklens="1"][rel="icon"]')) {
+      addLink('icon',                         iconStatic256,   'image/png', '256x256');
+      addLink('icon',                         iconStatic512,   'image/png', '512x512');
+      addLink('icon',                         iconData,        'image/png', null);
+      addLink('shortcut icon',                iconStatic256,   'image/png', null);
+      addLink('apple-touch-icon',             iconStaticTouch, 'image/png', '180x180');
+      addLink('apple-touch-icon-precomposed', iconStaticTouch, 'image/png', '180x180');
+      addLink('apple-touch-icon',             iconData,        'image/png', '192x192');
     }
-    doc.head.appendChild(link);
-  });
 
-  // 4. Android Chrome "Add to Home Screen" reads the Web App Manifest for name/icons
-  const manifest = {
-    name: 'Stocklens',
-    short_name: 'Stocklens',
-    description: 'NSE market tracker — stocks, mutual funds, watchlist',
-    start_url: '.',
-    scope: '.',
-    display: 'standalone',
-    orientation: 'portrait',
-    background_color: '#0d0d0d',
-    theme_color: '#00d09c',
-    icons: [
-      { src: iconUrl, sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: iconUrl, sizes: '256x256', type: 'image/png', purpose: 'any' },
-      { src: iconUrl, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
-    ]
-  };
-  const manifestUrl = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(JSON.stringify(manifest));
-  doc.querySelectorAll('link[rel="manifest"]').forEach(el => el.remove());
-  const mLink = doc.createElement('link');
-  mLink.setAttribute('rel', 'manifest');
-  mLink.setAttribute('href', manifestUrl);
-  doc.head.appendChild(mLink);
+    // Web App Manifest — prefer static file, fall back to data URL
+    if (\!doc.querySelector('link[data-stocklens="1"][rel="manifest"]')) {
+      const manifestObj = {
+        name: 'Stocklens',
+        short_name: 'Stocklens',
+        description: 'NSE market tracker — stocks, mutual funds, watchlist',
+        start_url: '.',
+        scope: '.',
+        display: 'standalone',
+        orientation: 'portrait',
+        background_color: '#0d0d0d',
+        theme_color: '#00d09c',
+        icons: [
+          { src: iconData, sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: iconData, sizes: '256x256', type: 'image/png', purpose: 'any' },
+          { src: iconData, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+        ]
+      };
+      const manifestDataUrl = 'data:application/manifest+json;charset=utf-8,'
+                            + encodeURIComponent(JSON.stringify(manifestObj));
 
-  // 5. Keep the title locked to "Stocklens" — Streamlit sometimes resets it on nav
+      // Static URL primary
+      addLink('manifest', manifestStatic, null, null);
+      // Data URL as belt-and-braces
+      const dLink = doc.createElement('link');
+      dLink.setAttribute('rel', 'manifest');
+      dLink.setAttribute('href', manifestDataUrl);
+      dLink.dataset.stocklens = '1';
+      doc.head.appendChild(dLink);
+    }
+  }
+
+  // Run immediately
+  apply();
+
+  // Keep re-applying for 6 seconds (Streamlit's initial bootstrap re-adds its links)
+  let n = 0;
+  const iv = setInterval(() => { apply(); if (++n > 40) clearInterval(iv); }, 150);
+
+  // Long-term: watch <head> and remove any re-injected Streamlit defaults
   try {
-    const titleEl = doc.querySelector('title');
-    if (titleEl) {
-      new MutationObserver(() => { if (doc.title \!== 'Stocklens') doc.title = 'Stocklens'; })
-        .observe(titleEl, { childList: true });
-    }
+    const headObs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const node of m.addedNodes) {
+          if (node.tagName \!== 'LINK') continue;
+          if (node.dataset && node.dataset.stocklens === '1') continue;
+          const rel = (node.getAttribute('rel') || '').toLowerCase();
+          if (rel === 'manifest' || rel === 'icon' || rel === 'shortcut icon'
+              || rel === 'apple-touch-icon' || rel === 'apple-touch-icon-precomposed') {
+            node.remove();
+          }
+        }
+      }
+    });
+    headObs.observe(doc.head, { childList: true });
   } catch(e) {}
+
+  // Lock the title
+  try {
+    const tEl = doc.querySelector('title');
+    if (tEl) new MutationObserver(() => {
+      if (doc.title \!== 'Stocklens') doc.title = 'Stocklens';
+    }).observe(tEl, { childList: true });
+  } catch(e) {}
+
+  console.log('[Stocklens] branding override active');
 })();
 </script>
 """.replace("__ICON_B64__", _ICON_B64),
